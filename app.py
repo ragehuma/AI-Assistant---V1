@@ -23,7 +23,7 @@ if "authenticated" not in st.session_state:
             st.error("❌ Incorrect passcode")
     st.stop()
 
-# ============== HOSTED MEMORY (NO OPENAI NEEDED) ==============
+# ============== HOSTED MEMORY (Grok + Mem0 Cloud) ==============
 memory = MemoryClient(api_key=os.environ["MEM0_API_KEY"])
 
 if "user_id" not in st.session_state:
@@ -42,7 +42,7 @@ with st.sidebar:
         "Grok Model",
         ["grok-4", "grok-4-1-fast-reasoning", "grok-4-heavy"]
     )
-    st.info("100% Grok-powered • Memories stored forever in Mem0 cloud.\nType **UPDATE_MEM** for full consistency check.")
+    st.info("100% Grok-powered • Memories stored forever.\nType **UPDATE_MEM** for full consistency check.")
 
 # ====================== MAIN CHAT ======================
 st.title("Your Long-Term Grok Assistant")
@@ -64,8 +64,12 @@ if prompt := st.chat_input("Ask me anything or teach me something..."):
     if prompt.strip().upper() == "UPDATE_MEM":
         with st.chat_message("assistant"):
             with st.spinner("Scanning ALL your memories for contradictions..."):
-                # Get ALL memories (hosted client supports get_all)
-                all_data = memory.get_all(user_id=user_id)
+                # FIXED: Use filters + high limit to fetch everything
+                all_data = memory.search(
+                    query="", 
+                    filters={"user_id": user_id},
+                    limit=1000
+                )
                 memories_list = [item.get("memory", "") for item in all_data.get("results", [])]
 
                 recent = "\n".join([f"{m['role']}: {m['content']}" 
@@ -131,8 +135,12 @@ End with: "Do you want to proceed with updating the memories?" """
                     st.session_state.messages.append({"role": "assistant", "content": reply})
                     st.session_state.waiting_for_confirmation = False
         else:
-            # Normal Grok chat with long-term memory
-            relevant = memory.search(query=prompt, user_id=user_id, limit=8)
+            # FIXED: Use filters for hosted MemoryClient
+            relevant = memory.search(
+                query=prompt,
+                filters={"user_id": user_id},
+                limit=8
+            )
             memories_str = "\n".join([f"• {m['memory']}" for m in relevant.get("results", [])]) or "No prior memories yet."
 
             system_prompt = f"""You are Grok, a warm, intelligent, long-term adaptive assistant built by xAI.
@@ -156,7 +164,7 @@ Relevant memories:
 
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-            # Save to long-term memory (hosted)
+            # Save to long-term memory
             memory.add([
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": reply}
