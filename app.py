@@ -42,7 +42,7 @@ MODEL_MAP = {
     "Grok-4.1 Fast Reasoning": "xai/grok-4-1-fast-reasoning",
     "Grok-4 Fast Reasoning": "xai/grok-4-fast-reasoning",
     # Add "Grok-4 Heavy" below if you have access (SuperGrok Heavy users)
-    # "Grok-4 Heavy": "xai/grok-4-heavy",
+    "Grok-4 Heavy": "xai/grok-4-heavy",
 }
 
 # ====================== SIDEBAR ======================
