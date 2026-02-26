@@ -5,10 +5,14 @@ from litellm import completion
 
 st.set_page_config(page_title="My Adaptive Grok Assistant", page_icon="🧠", layout="centered")
 
-# ============== LOAD SECRETS ==============
-for key in ["MEM0_API_KEY", "GROK_API_KEY", "PASSCODE"]:
+# ============== LOAD SECRETS & MAP GROK → XAI ==============
+for key in ["MEM0_API_KEY", "GROK_API_KEY", "XAI_API_KEY", "PASSCODE"]:
     if key in st.secrets:
         os.environ[key] = st.secrets[key]
+
+# LiteLLM needs XAI_API_KEY for Grok models
+if "GROK_API_KEY" in os.environ and "XAI_API_KEY" not in os.environ:
+    os.environ["XAI_API_KEY"] = os.environ["GROK_API_KEY"]
 
 # ============== PASSCODE PROTECTION ==============
 if "authenticated" not in st.session_state:
@@ -23,7 +27,7 @@ if "authenticated" not in st.session_state:
             st.error("❌ Incorrect passcode")
     st.stop()
 
-# ============== HOSTED MEMORY (Grok + Mem0 Cloud) ==============
+# ============== HOSTED MEMORY ==============
 memory = MemoryClient(api_key=os.environ["MEM0_API_KEY"])
 
 if "user_id" not in st.session_state:
@@ -32,21 +36,32 @@ if "user_id" not in st.session_state:
 if "waiting_for_confirmation" not in st.session_state:
     st.session_state.waiting_for_confirmation = False
 
+# Friendly model names → real LiteLLM model strings
+MODEL_MAP = {
+    "Grok-4 (Standard)": "xai/grok-4",
+    "Grok-4.1 Fast Reasoning": "xai/grok-4-1-fast-reasoning",
+    "Grok-4 Fast Reasoning": "xai/grok-4-fast-reasoning",
+    # Add "Grok-4 Heavy" below if you have access (SuperGrok Heavy users)
+    # "Grok-4 Heavy": "xai/grok-4-heavy",
+}
+
 # ====================== SIDEBAR ======================
 with st.sidebar:
     st.title("🧠 Grok Adaptive Assistant")
     user_id = st.text_input("Your User ID", value=st.session_state.user_id)
     st.session_state.user_id = user_id
 
-    model = st.selectbox(
+    display_model = st.selectbox(
         "Grok Model",
-        ["grok-4", "grok-4-1-fast-reasoning", "grok-4-heavy"]
+        options=list(MODEL_MAP.keys())
     )
+    actual_model = MODEL_MAP[display_model]
+    
     st.info("100% Grok-powered • Memories stored forever.\nType **UPDATE_MEM** for full consistency check.")
 
 # ====================== MAIN CHAT ======================
 st.title("Your Long-Term Grok Assistant")
-st.caption("Passcode protected • Remembers everything • Grok only")
+st.caption("Passcode protected • Remembers everything • Pure Grok")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -64,7 +79,6 @@ if prompt := st.chat_input("Ask me anything or teach me something..."):
     if prompt.strip().upper() == "UPDATE_MEM":
         with st.chat_message("assistant"):
             with st.spinner("Scanning ALL your memories for contradictions..."):
-                # FIXED: Use filters + high limit to fetch everything
                 all_data = memory.search(
                     query="", 
                     filters={"user_id": user_id},
@@ -94,10 +108,9 @@ If none, reply exactly: "No contradictions found."
 End with: "Do you want to proceed with updating the memories?" """
 
                 response = completion(
-                    model=model,
+                    model=actual_model,
                     messages=[{"role": "user", "content": analysis_prompt}],
-                    temperature=0.3,
-                    api_key=os.environ["GROK_API_KEY"]
+                    temperature=0.3
                 )
                 analysis = response.choices[0].message.content
 
@@ -135,7 +148,7 @@ End with: "Do you want to proceed with updating the memories?" """
                     st.session_state.messages.append({"role": "assistant", "content": reply})
                     st.session_state.waiting_for_confirmation = False
         else:
-            # FIXED: Use filters for hosted MemoryClient
+            # Normal chat
             relevant = memory.search(
                 query=prompt,
                 filters={"user_id": user_id},
@@ -151,13 +164,12 @@ Relevant memories:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking with Grok..."):
                     response = completion(
-                        model=model,
+                        model=actual_model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.7,
-                        api_key=os.environ["GROK_API_KEY"]
+                        temperature=0.7
                     )
                     reply = response.choices[0].message.content
                     st.markdown(reply)
